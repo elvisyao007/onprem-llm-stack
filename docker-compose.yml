@@ -1,0 +1,123 @@
+name: onprem-llm-stack
+
+# Profiles:
+#   dev  — LiteLLM proxies to Ollama running on the host (no inference container).
+#           Avoids double-loading 40 GB+ of model weights into VRAM.
+#   prod — adds a vLLM container for higher-throughput serving.
+#           Requires pre-downloaded model weights at VLLM_MODEL_CACHE_PATH.
+#
+# See ADR-0001 in DECISIONS.md for the rationale behind this split.
+#
+# Image version policy: all tags are pinned. See ADR-0003.
+# Verify tags at the registries before an air-gapped mirror pull:
+#   LiteLLM  : https://github.com/BerriAI/litellm/releases
+#   Open WebUI: https://github.com/open-webui/open-webui/releases
+#   vLLM     : https://github.com/vllm-project/vllm/releases
+
+networks:
+  llm-net:
+    driver: bridge
+
+volumes:
+  open-webui-data:
+    driver: local
+
+services:
+
+  # ── Inference — prod profile only ────────────────────────────
+  vllm:
+    image: vllm/vllm-openai:v0.22.1
+    profiles: [prod]
+    container_name: onprem-vllm
+    restart: unless-stopped
+    # vLLM is internal-only; access goes through LiteLLM gateway
+    expose:
+      - "8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ${VLLM_MODEL_CACHE_PATH:-/mnt/data/models}:/models:ro
+    environment:
+      HF_HOME: /models
+    command:
+      - --model
+      - ${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --max-model-len
+      - "${VLLM_MAX_MODEL_LEN:-8192}"
+      - --tensor-parallel-size
+      - "${VLLM_TENSOR_PARALLEL_SIZE:-1}"
+    networks:
+      - llm-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 120s
+
+  # ── API Gateway — both profiles ───────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.88.1
+    profiles: [dev, prod]
+    container_name: onprem-litellm
+    restart: unless-stopped
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./configs/litellm_config.yaml:/app/config.yaml:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env}
+    # Allows the container to reach Ollama on the host via host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "4000"
+    networks:
+      - llm-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4000/health/liveliness"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Web UI — both profiles ────────────────────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.9.6
+    profiles: [dev, prod]
+    container_name: onprem-open-webui
+    restart: unless-stopped
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    environment:
+      # Point WebUI at the LiteLLM gateway instead of Ollama directly
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env}
+      # Disable built-in Ollama integration (routing goes through LiteLLM)
+      ENABLE_OLLAMA_API: "false"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-changeme-local-dev}
+    depends_on:
+      litellm:
+        condition: service_healthy
+    networks:
+      - llm-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
