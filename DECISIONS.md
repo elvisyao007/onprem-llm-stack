@@ -311,3 +311,64 @@ prevents the audit log from becoming a shadow copy of the full conversation hist
   (must correlate with application-layer logs if needed).
 - Abuse detection based on content patterns requires enabling `AUDIT_LOG_CONTENT=true`
   and a separate analysis step.
+
+---
+
+## ADR-0006: Denied requests are pre-audited by the auth layer, not the failure callback
+
+**Status:** Accepted  
+**Date:** 2026-06-11  
+**Deciders:** Elvis Yao
+
+### Context
+
+When `custom_auth` raises an HTTPException (403 model access denied, 429 budget
+exhausted), LiteLLM fires `async_log_failure_event` — but at that point
+`kwargs["litellm_params"]["metadata"]` is unpopulated because the exception was
+raised before `UserAPIKeyAuth` was returned. The failure callback therefore falls
+back to `user_id='unknown'` and `key_label='unknown'`, making the denial record
+unattributable.
+
+**Attributability of unauthorized access attempts is the primary value of an audit
+log.** "Who tried to exceed their permissions" is more security-relevant than
+"who made a normal successful call." Logging denials as 'unknown' defeats the
+purpose of the trail.
+
+### Decision
+
+For 403/429 exceptions raised against a *validated* key (key is real; it simply
+lacks permission or budget), `key_auth.py` calls `sqlite_audit_logger._write()`
+directly — before raising — while user_id and key_label are still in scope.
+The exception is then marked with `exc._pre_audited = True`.
+`async_log_failure_event` checks for this flag and returns early, preventing a
+duplicate 'unknown' record.
+
+Invalid-key 401s remain 'unknown': the key is not in the YAML store, so there is
+no user to attribute them to.
+
+### Rationale
+
+- Writing before raising is the only point in the call chain where the auth layer
+  simultaneously holds the validated key info AND knows the denial reason.
+- Marking the exception avoids double-recording without shared state or a
+  request-ID correlation mechanism.
+- The `_pre_audited` attribute is on the Python exception object, not in the
+  HTTP response body — no information is leaked to the API caller.
+
+### Consequences
+
+**Positive:**
+- Denied requests (403, 429) appear in audit reports attributed to the correct
+  user, model, and key — the audit trail is complete.
+- Truly invalid keys (unknown bearer tokens) remain 'unknown' — correct, since
+  there is no identity to attribute them to.
+
+**Negative / trade-offs:**
+- The auth module (`key_auth.py`) and the audit module (`audit_logger.py`) are
+  now coupled: `key_auth.py` imports `sqlite_audit_logger` at call time (lazy
+  import to avoid circular load-order issues). If the audit logger fails to
+  initialize, denial records are lost silently (logged to stdout only).
+- The `_pre_audited` convention is informal: any future exception raised in
+  `key_auth.py` that sets this attribute will be silently swallowed by the
+  failure callback. This is intentional but should be documented if new denial
+  types are added.
