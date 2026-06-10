@@ -1,0 +1,29 @@
+# virtual_keys.yaml — Virtual API key definitions for onprem-llm-stack
+#
+# Copy this file to configs/virtual_keys.yaml and fill in real keys.
+# configs/virtual_keys.yaml is gitignored — never commit real keys.
+#
+# Generate a key:   bash scripts/create_key.sh --user alice --models qwen3-32b --budget 10 --rpm 60
+# View audit log:   python3 scripts/audit_report.py
+#
+# Fields per key:
+#   key            — the bearer token (generate with: openssl rand -hex 20)
+#   user_id        — display name / log attribution identifier
+#   allowed_models — list of LiteLLM model_name aliases this key may call
+#   max_budget_usd — cumulative spend ceiling (notional USD, self-hosted approximation)
+#   rpm            — requests-per-minute limit (stored; enforcement in Phase C)
+
+keys:
+  - key: sk-user-alice-replace-me
+    user_id: alice
+    allowed_models:
+      - qwen3-32b
+    max_budget_usd: 10.0
+    rpm: 60
+
+  - key: sk-user-bob-replace-me
+    user_id: bob
+    allowed_models:
+      - gemma4-31b
+    max_budget_usd: 5.0
+    rpm: 30
