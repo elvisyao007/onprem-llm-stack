@@ -28,13 +28,13 @@ model_list:
       model: openai/qwen3:32b
       # Port 11435 = ollama-proxy.py forwarding to Ollama on 127.0.0.1:11434.
       # Change back to 11434 after applying the OLLAMA_HOST=0.0.0.0 systemd override.
-      api_base: http://host.docker.internal:11435/v1
+      api_base: http://host.docker.internal:11434/v1
       api_key: "none"
 
   - model_name: gemma4-31b
     litellm_params:
       model: openai/gemma4:31b
-      api_base: http://host.docker.internal:11435/v1
+      api_base: http://host.docker.internal:11434/v1
       api_key: "none"
 
   # ── prod routes — vLLM container (uncomment for prod profile) ─
@@ -48,11 +48,20 @@ general_settings:
   # Master key is injected from the environment; never hardcode here.
   master_key: "os.environ/LITELLM_MASTER_KEY"
 
+  # Phase B: file-based virtual key auth.
+  # Replaces LiteLLM's database-backed /key/generate (which requires PostgreSQL).
+  # See DECISIONS.md ADR-0004 for the rationale.
+  # Module path is resolved relative to this config file's directory (/app/).
+  custom_auth: "callbacks.key_auth.user_api_key_auth"
+
   # Drop requests to undefined models rather than passing them through silently.
-  # This prevents accidental leakage to unexpected backends.
   drop_params: false
 
 litellm_settings:
-  # Do not redact prompts/completions in logs — explicitly opt-out of content logging.
-  # Phase B will introduce controlled audit callbacks; until then, keep logs clean.
+  # Phase B: SQLite audit callback.
+  # Logs every request (user, model, tokens, latency) to data/audit.db.
+  # Prompt/response content is omitted by default (AUDIT_LOG_CONTENT=false).
+  callbacks: ["callbacks.audit_logger.sqlite_audit_logger"]
+
+  # LiteLLM's own key-info redaction; our callback manages its own redaction policy.
   redact_user_api_key_info: true

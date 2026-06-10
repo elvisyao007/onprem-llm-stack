@@ -74,8 +74,18 @@ services:
       - "${LITELLM_PORT:-4000}:4000"
     volumes:
       - ./configs/litellm_config.yaml:/app/config.yaml:ro
+      # Phase B: virtual key definitions and audit callback code
+      - ./configs/virtual_keys.yaml:/app/configs/virtual_keys.yaml:ro
+      - ./callbacks:/app/callbacks:ro
+      # data/ is read-write so audit_logger.py can write audit.db
+      - ./data:/app/data
     environment:
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env}
+      LITELLM_MASTER_KEY:  ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env}
+      # Paths used by callbacks/ — must match container mount points above
+      VIRTUAL_KEYS_PATH:   /app/configs/virtual_keys.yaml
+      AUDIT_DB_PATH:       /app/data/audit.db
+      # Set AUDIT_LOG_CONTENT=true to record truncated prompt/response text in audit.db
+      AUDIT_LOG_CONTENT:   ${AUDIT_LOG_CONTENT:-false}
     # Allows the container to reach Ollama on the host via host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"

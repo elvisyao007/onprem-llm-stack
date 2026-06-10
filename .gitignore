@@ -1,5 +1,9 @@
 # Environment — never commit secrets
 .env
+
+# Phase B: virtual key definitions (contain API keys) and audit database
+configs/virtual_keys.yaml
+data/audit.db
 .env.local
 .env.*.local
 *.env
