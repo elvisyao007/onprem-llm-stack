@@ -372,3 +372,85 @@ no user to attribute them to.
   `key_auth.py` that sets this attribute will be silently swallowed by the
   failure callback. This is intentional but should be documented if new denial
   types are added.
+
+---
+
+## ADR-0007: Built-in acceptance test with an independent judge model
+
+**Status:** Accepted  
+**Date:** 2026-06-11  
+**Deciders:** Elvis Yao
+
+### Context
+
+Every "LLM on Docker Compose" tutorial declares success when containers are
+healthy and a test curl returns HTTP 200. That answers "does it run?" but not
+"is it good enough to put in front of users?" The gap between the two is the
+gap between demo-grade and production-grade deployment.
+
+Enterprise adoption of on-prem LLM has a first-minute blocker: there is no
+objective, machine-readable answer to "is this deployment production-ready?"
+Without that answer, the conversation devolves into subjective impressions and
+manual spot-checks — neither of which scales or transfers to a second site.
+
+### Decision
+
+Bundle a smoke-eval acceptance test directly in the stack (`scripts/smoke_eval.py`
++ `eval/golden_set.json`). Running `make smoke-eval` produces a numeric pass
+rate and an explicit `PASS`/`FAIL` verdict against a configurable threshold.
+
+**Independent judge principle:** the judge model must be a different model
+family from the generator. By default, `qwen3-32b` generates and `gemma4-31b`
+judges. This is the same principle applied in the `eval-driven-llm` library:
+a model asked to evaluate its own output has an obvious conflict of interest.
+The judge's independence is stated explicitly in every run's output
+("judge != generator, non-self-evaluation") so it is visible in screenshots
+and log files shared with stakeholders.
+
+**Determinism:** the judge always runs at `temperature=0`. The golden set is
+a static file in the repository. The same deployment, same model weights, same
+hardware → same verdict. The test is reproducible, comparable across sites, and
+auditable in git history.
+
+**Air-gap compatibility:** the golden set, the generator, and the judge are all
+local. `smoke_eval.py` makes zero internet calls. The acceptance test runs on
+a fully isolated target machine immediately after deployment.
+
+### Rationale
+
+- **The "装完即验" (installable-and-immediately-verifiable) principle** eliminates
+  the most common friction point in enterprise LLM adoption. A quantified score
+  in the first five minutes of deployment changes the conversation from "it
+  seems to work" to "it passes at 86%."
+- **Eval methodology as a competitive moat.** Other stacks answer "does it run?"
+  This stack answers "does it perform?" That distinction is the reason eval
+  methodology (`eval-driven-llm`) is the intellectual foundation of this project.
+- **Judge independence is non-negotiable.** Self-evaluation inflates scores in
+  a way that cannot be calibrated or trusted. Using a different model family as
+  judge is the minimum viable independence criterion.
+- **Smoke eval ≠ comprehensive benchmark.** Fifteen questions over two model
+  families is a sanity check, not an exhaustive evaluation. The full methodology
+  (multi-model, multi-dimension, statistically significant sampling) lives in
+  `eval-driven-llm`. The smoke eval is the 80/20: enough signal to catch a broken
+  deployment, fast enough to run before every production rollout.
+
+### Consequences
+
+**Positive:**
+- Deployment has a machine-readable pass/fail criterion from day one.
+- Reports (`eval/reports/<timestamp>/`) provide a timestamped evidence trail
+  usable in change management or compliance reviews.
+- The threshold (`EVAL_PASS_THRESHOLD`, default 0.7) is configurable — teams
+  can raise it as models and infrastructure mature.
+
+**Negative / trade-offs:**
+- Fifteen questions is a small sample; a model that fails in real usage may
+  still pass smoke eval. This is acceptable: the goal is "catch obvious
+  regressions fast," not "certify production quality" (that requires `eval-driven-llm`).
+- Smoke eval consumes VRAM by running both qwen3-32b (generator) and
+  gemma4-31b (judge) sequentially. On a 32 GB card with one model already
+  loaded, this is fine; on a system running both models simultaneously it may
+  cause eviction. Mitigated by running eval before the stack is under user load.
+- The golden set covers general LLM knowledge, not domain-specific enterprise
+  content. Teams with highly specialized use cases should extend `golden_set.json`
+  with domain questions before using the score as a deployment gate.
