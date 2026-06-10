@@ -1,0 +1,157 @@
+{
+  "version": "1.0",
+  "description": "Smoke-eval golden set for onprem-llm-stack — 15 technical QA questions covering LLM concepts, deployment infrastructure, and multilingual capability (EN/ZH/JA). Designed for a 'private deployment assistant' persona.",
+  "eval_note": "These questions test factual recall of well-established technical concepts. Expected points are checkable criteria, not exact phrasings. A good answer need not quote them verbatim — it must demonstrate correct understanding.",
+  "questions": [
+    {
+      "id": "q01",
+      "lang": "en",
+      "category": "llm_concepts",
+      "question": "What does 'context window' mean in large language models, and why does its size matter?",
+      "expected_points": [
+        "the context window is the maximum total number of tokens (input plus output combined) the model can process in a single request",
+        "a larger context window allows handling longer documents or multi-turn conversations without truncating earlier content"
+      ]
+    },
+    {
+      "id": "q02",
+      "lang": "en",
+      "category": "retrieval",
+      "question": "What is Retrieval-Augmented Generation (RAG) and what problem does it address compared to using an LLM alone?",
+      "expected_points": [
+        "RAG combines a retrieval step (searching an external knowledge base or document corpus) with LLM generation",
+        "it reduces hallucinations and overcomes the model's knowledge cutoff by grounding responses in retrieved, up-to-date facts"
+      ]
+    },
+    {
+      "id": "q03",
+      "lang": "zh",
+      "category": "docker",
+      "question": "Docker Compose 的 profiles 功能有什么作用？请给一个具体的使用场景说明它解决了什么问题。",
+      "expected_points": [
+        "profiles 允许在同一个 compose 文件中为不同服务打标签，按需只启动特定服务组合，而不需要维护多个 compose 文件",
+        "典型场景示例：开发环境仅启动应用服务（不含推理容器），生产环境额外启动 GPU 推理容器，两者共用同一配置文件"
+      ]
+    },
+    {
+      "id": "q04",
+      "lang": "zh",
+      "category": "llm_concepts",
+      "question": "什么是向量数据库？它和传统关系型数据库（如 MySQL）的核心区别是什么？",
+      "expected_points": [
+        "向量数据库存储高维向量嵌入（embedding），支持基于语义相似度的近邻搜索（如余弦相似度、点积）",
+        "传统数据库按精确值或范围查询，向量数据库按向量距离查询，适合语义检索而非精确匹配"
+      ]
+    },
+    {
+      "id": "q05",
+      "lang": "en",
+      "category": "llm_concepts",
+      "question": "What is the difference between a 'token' and a 'word' as used in LLMs? Give an approximate conversion rule.",
+      "expected_points": [
+        "tokens are subword units produced by a tokenizer; a single word may map to one or more tokens depending on its length and frequency",
+        "a rough rule of thumb is that one English word is approximately 1 to 1.5 tokens for common LLM tokenizers"
+      ]
+    },
+    {
+      "id": "q06",
+      "lang": "ja",
+      "category": "llm_concepts",
+      "question": "LLMにおける「ハルシネーション（幻覚）」とはどのような現象ですか？また、なぜ発生するのですか？",
+      "expected_points": [
+        "モデルが事実に基づかない内容を、あたかも正確であるかのように自信を持って生成する現象",
+        "訓練データに存在しない知識を問われた際や、確率的なパターンマッチングが誤った方向に働いたときに発生する"
+      ]
+    },
+    {
+      "id": "q07",
+      "lang": "zh",
+      "category": "hardware",
+      "question": "运行大型语言模型时，VRAM（显存）和系统 RAM 各自承担什么角色？如果显存不足会发生什么？",
+      "expected_points": [
+        "VRAM 是 GPU 专用内存，模型权重和矩阵运算必须驻留其中才能进行 GPU 加速推理",
+        "若模型超出 VRAM 容量，部分数据将通过 PCIe 总线在系统 RAM 和 VRAM 间来回传输，推理速度大幅下降"
+      ]
+    },
+    {
+      "id": "q08",
+      "lang": "en",
+      "category": "api",
+      "question": "Describe the structure of the OpenAI chat completions API request. Why have many LLM providers adopted the same format?",
+      "expected_points": [
+        "a POST to /v1/chat/completions with a JSON body containing a model name and a messages array where each message has a role (system, user, or assistant) and content",
+        "wide adoption means clients written for OpenAI can use any compatible provider by changing only the base URL and API key, with zero code changes"
+      ]
+    },
+    {
+      "id": "q09",
+      "lang": "zh",
+      "category": "llm_concepts",
+      "question": "什么是模型量化（quantization）？INT4 量化相比 FP16 的主要优势和代价分别是什么？",
+      "expected_points": [
+        "量化将模型参数从高精度格式（如 FP16/BF16）压缩为低精度格式（如 INT4/INT8），显著减少显存占用",
+        "优势是模型体积减小约 4 倍、推理速度可提升；代价是可能引入精度损失，输出质量略有下降"
+      ]
+    },
+    {
+      "id": "q10",
+      "lang": "ja",
+      "category": "security",
+      "question": "「エアギャップ（air-gapped）」環境とは何ですか？機密性の高いシステムでなぜこの構成が採用されるのですか？",
+      "expected_points": [
+        "外部ネットワーク（インターネット）から物理的または論理的に完全に隔離されたシステムやネットワーク",
+        "ネットワーク経由のデータ漏洩や外部からの侵入経路がなくなるため、機密データを扱うシステムのセキュリティを高めることができる"
+      ]
+    },
+    {
+      "id": "q11",
+      "lang": "en",
+      "category": "llm_concepts",
+      "question": "What does the 'temperature' parameter control in LLM text generation? What is the behaviour at temperature 0?",
+      "expected_points": [
+        "temperature scales the probability distribution over the next token; higher values increase randomness and diversity, lower values make output more focused and predictable",
+        "at temperature 0 the model greedily selects the highest-probability token at each step, making the output deterministic and reproducible"
+      ]
+    },
+    {
+      "id": "q12",
+      "lang": "zh",
+      "category": "comparison",
+      "question": "Ollama 和 vLLM 分别适合什么场景？在多用户生产环境下为什么通常优先选择 vLLM？",
+      "expected_points": [
+        "Ollama 适合本地单用户开发：安装简单、支持热切换模型，但每次只处理一个请求",
+        "vLLM 采用连续批处理（continuous batching）技术，能高效并发处理多个请求，吞吐量远高于 Ollama，适合生产多用户场景"
+      ]
+    },
+    {
+      "id": "q13",
+      "lang": "en",
+      "category": "llm_concepts",
+      "question": "What is a 'system prompt' in a chat API, and how does it differ from a user message in purpose and typical visibility?",
+      "expected_points": [
+        "a system prompt uses the role 'system' and is placed before the conversation to set the model's persona, tone, constraints, or background context",
+        "unlike user messages it is typically injected by the application (not typed by the end user) and is often hidden from the user-facing interface"
+      ]
+    },
+    {
+      "id": "q14",
+      "lang": "ja",
+      "category": "deployment",
+      "question": "LLMをオンプレミスで運用する場合、クラウドAPIと比べた主なメリットとデメリットをそれぞれ挙げてください。",
+      "expected_points": [
+        "メリット：プロンプトや応答が外部に送信されないためデータ主権とプライバシーが保たれる。また、使用量に応じたAPIコストが発生しない",
+        "デメリット：GPU等のハードウェア調達・維持コストが高い。最新モデルの利用には手動での重みダウンロードと更新作業が必要になる"
+      ]
+    },
+    {
+      "id": "q15",
+      "lang": "en",
+      "category": "security",
+      "question": "What is an API key, and why should each user or service use a separate key rather than sharing a single one?",
+      "expected_points": [
+        "an API key is a secret credential (token) included in requests to authenticate the caller to the API",
+        "separate keys allow individual revocation, per-user usage tracking and rate limiting, and isolation of impact when one key is compromised"
+      ]
+    }
+  ]
+}
