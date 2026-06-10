@@ -13,13 +13,21 @@ against a new SDK, and without devoting a week to infrastructure glue.
 | Layer | Component | Role |
 |-------|-----------|------|
 | Inference | Ollama (dev) / vLLM (prod) | Loads and serves model weights |
-| Gateway | LiteLLM | Auth, model routing, rate-limit (Phase B: per-user budgets) |
+| Gateway | LiteLLM | Auth, model routing, per-user access control |
 | UI | Open WebUI | Chat interface + OpenAI-compatible REST API |
 
 **Key properties:**
+
 - **Air-gapped ready** — all image tags are pinned; no runtime internet dependency.
-- **Zero VRAM waste in dev** — the dev profile reuses Ollama already running on the host instead of loading a second copy of the model weights.
-- **Drop-in OpenAI compatibility** — any client that speaks `v1/chat/completions` works unchanged; just point `OPENAI_BASE_URL` at `:4000`.
+  The audit database is a local SQLite file — including the logs, nothing leaves the box.
+- **Per-user access control + local audit trail** — each team member gets their own
+  API key scoped to specific models and a spend budget. Every request is logged
+  (user, model, tokens, latency) to a local SQLite file. No cloud logging service,
+  no Kafka, no external database: data never leaves the box, including the logs.
+- **Zero VRAM waste in dev** — the dev profile reuses Ollama already running on the
+  host instead of loading a second copy of the model weights.
+- **Drop-in OpenAI compatibility** — any client that speaks `v1/chat/completions`
+  works unchanged; just point `OPENAI_BASE_URL` at `:4000`.
 
 ## Architecture
 
@@ -33,7 +41,7 @@ graph TD
 
     subgraph docker["Docker: llm-net (bridge)"]
         WebUI["Open WebUI\n:8080 → host :3000"]
-        LiteLLM["LiteLLM Gateway\n:4000"]
+        LiteLLM["LiteLLM Gateway\n:4000\ncustom_auth → virtual_keys.yaml\ncallback → audit.db"]
         WebUI --> LiteLLM
     end
 
@@ -64,10 +72,13 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 # 1. Configure environment (at minimum change LITELLM_MASTER_KEY)
 cp .env.example .env && $EDITOR .env
 
-# 2. Start the dev stack (no inference container — uses host Ollama)
+# 2. Initialise virtual key definitions
+cp configs/virtual_keys.yaml.example configs/virtual_keys.yaml
+
+# 3. Start the dev stack
 docker compose --profile dev up -d
 
-# 3. Verify all services are healthy
+# 4. Verify all services are healthy
 bash scripts/healthcheck.sh
 ```
 
@@ -80,30 +91,54 @@ To stop:
 docker compose --profile dev down
 ```
 
-### Quick API smoke test
+### Per-user key management
+
+```bash
+# Create a key for alice scoped to qwen3-32b with a $10 budget
+bash scripts/create_key.sh --user alice --models qwen3-32b --budget 10 --rpm 60
+
+# Create a key for bob scoped to gemma4-31b
+bash scripts/create_key.sh --user bob --models gemma4-31b --budget 5 --rpm 30
+
+# Use alice's key (key printed by create_key.sh)
+curl http://localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer <alice-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen3-32b","messages":[{"role":"user","content":"Hello"}],"max_tokens":512}'
+```
+
+### Audit report
+
+```bash
+# Per-user aggregated table (all time)
+python3 scripts/audit_report.py
+
+# Filter to requests since a date
+python3 scripts/audit_report.py --since 2026-06-01
+```
+
+### Quick API smoke test (master key)
 
 ```bash
 curl http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"qwen3-32b","messages":[{"role":"user","content":"Reply in one word: ready?"}],"max_tokens":5}'
+  -d '{"model":"qwen3-32b","messages":[{"role":"user","content":"Reply in one word: ready?"}],"max_tokens":512}'
 ```
 
 ## Roadmap
 
-The items below are **intentional Phase A exclusions**, not gaps.
-They are planned for later phases:
-
-| Feature | Phase |
-|---------|-------|
-| Per-user virtual keys + budget enforcement | B |
-| Audit log / usage callback to external sink | B |
-| PII detection / guardrails (e.g. Presidio) | C |
-| SSO / LDAP integration | C |
-| Kubernetes manifests (Helm chart) | D |
-| Multi-GPU tensor-parallel sharding | D |
-| Observability stack (Prometheus · Grafana · Jaeger) | D |
-| Automated evaluation / smoke-eval suite | E |
+| Feature | Phase | Status |
+|---------|-------|--------|
+| dev/prod profiles, LiteLLM gateway, Open WebUI | A | ✓ done |
+| Per-user virtual keys + local audit trail (SQLite) | B | ✓ done |
+| PII detection / guardrails | C | planned |
+| SSO / LDAP integration | C | planned |
+| RPM enforcement | C | planned |
+| Kubernetes manifests (Helm chart) | D | planned |
+| Multi-GPU tensor-parallel sharding | D | planned |
+| Observability stack (Prometheus · Grafana · Jaeger) | D | planned |
+| Automated evaluation / smoke-eval suite | E | planned |
 
 ## License
 
