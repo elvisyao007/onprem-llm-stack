@@ -1,0 +1,45 @@
+# LiteLLM Proxy Configuration
+# Reference: https://docs.litellm.ai/docs/proxy/configs
+#
+# Model naming convention:
+#   model_name   — the alias clients use in API requests (e.g. "qwen3-32b")
+#   litellm_params.model — the upstream identifier LiteLLM routes to
+#
+# dev profile routes below use Ollama running on the host.
+# prod profile routes are commented out; uncomment and adjust for vLLM.
+#
+# Phase B will add: virtual_keys, budget_manager, callbacks (audit log).
+# Do not add those here.
+
+model_list:
+
+  # ── dev routes — Ollama on host ──────────────────────────────
+  - model_name: qwen3-32b
+    litellm_params:
+      model: ollama/qwen3:32b
+      api_base: http://host.docker.internal:11434
+
+  - model_name: gemma4-31b
+    litellm_params:
+      model: ollama/gemma4:31b
+      api_base: http://host.docker.internal:11434
+
+  # ── prod routes — vLLM container (uncomment for prod profile) ─
+  # - model_name: vllm-default
+  #   litellm_params:
+  #     model: openai/your-model-id    # matches the --model arg passed to vLLM
+  #     api_base: http://vllm:8000/v1
+  #     api_key: "none"                # vLLM does not require a key by default
+
+general_settings:
+  # Master key is injected from the environment; never hardcode here.
+  master_key: "os.environ/LITELLM_MASTER_KEY"
+
+  # Drop requests to undefined models rather than passing them through silently.
+  # This prevents accidental leakage to unexpected backends.
+  drop_params: false
+
+litellm_settings:
+  # Do not redact prompts/completions in logs — explicitly opt-out of content logging.
+  # Phase B will introduce controlled audit callbacks; until then, keep logs clean.
+  redact_user_api_key_info: true
