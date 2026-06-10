@@ -86,8 +86,10 @@ services:
       - "4000"
     networks:
       - llm-net
+    # LiteLLM image has no curl; use python3 (always present in the venv)
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:4000/health/liveliness"]
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=4)"]
       interval: 15s
       timeout: 5s
       retries: 5
