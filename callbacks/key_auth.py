@@ -13,6 +13,7 @@ import os
 import sqlite3
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +91,41 @@ def _get_budget_spent(key_label: str) -> float:
         return 0.0
 
 
+def _pre_audit_denial(key_info: dict, label: str, model: str, error_type: str) -> None:
+    """
+    Write a failure audit record directly to SQLite before raising a 403/429.
+
+    The LiteLLM failure callback fires AFTER custom_auth raises, at which point
+    kwargs["litellm_params"]["metadata"] is unpopulated — so user_id/key_label
+    would be recorded as 'unknown'. Writing here instead, while we still hold
+    the validated key info, ensures denied requests are attributed correctly.
+
+    The caller must also set exc._pre_audited = True so the failure callback
+    skips double-recording.
+    """
+    # Late import to avoid circular dependency at module load time.
+    # Both modules are loaded by LiteLLM; this import resolves after init.
+    try:
+        from callbacks.audit_logger import sqlite_audit_logger  # noqa: PLC0415
+        sqlite_audit_logger._write(
+            ts=datetime.now(timezone.utc).isoformat(),
+            user_id=str(key_info.get("user_id", "unknown")),
+            key_label=label,
+            model=model,
+            tokens_in=0,
+            tokens_out=0,
+            latency_ms=0.0,
+            status="failure",
+            error_type=error_type,
+            content_prompt=None,
+            content_response=None,
+            cost_usd=0.0,
+            is_failure=True,
+        )
+    except Exception as exc:
+        print(f"[key_auth] pre-audit write failed: {exc}")
+
+
 async def user_api_key_auth(request: Request, api_key: str) -> "UserAPIKeyAuth":
     """
     Custom auth handler for LiteLLM proxy.
@@ -130,14 +166,16 @@ async def user_api_key_auth(request: Request, api_key: str) -> "UserAPIKeyAuth":
     if max_budget is not None:
         spent = _get_budget_spent(label)
         if spent >= float(max_budget):
-            raise HTTPException(
+            _pre_audit_denial(key_info, label, "unknown", "budget_exceeded")
+            exc = HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail={
                     "error": f"Budget exhausted: ${spent:.4f} of ${max_budget:.2f} spent",
                     "code": "budget_exceeded",
-                    "user_id": key_info.get("user_id", "unknown"),
                 },
             )
+            exc._pre_audited = True  # type: ignore[attr-defined]
+            raise exc
 
     allowed_models: list[str] = key_info.get("allowed_models") or []
 
@@ -151,7 +189,8 @@ async def user_api_key_auth(request: Request, api_key: str) -> "UserAPIKeyAuth":
             body_json = json.loads(body_bytes) if body_bytes else {}
             requested_model = body_json.get("model", "")
             if requested_model and requested_model not in allowed_models:
-                raise HTTPException(
+                _pre_audit_denial(key_info, label, requested_model, "model_access_denied")
+                exc = HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail={
                         "error": (
@@ -161,6 +200,8 @@ async def user_api_key_auth(request: Request, api_key: str) -> "UserAPIKeyAuth":
                         "code": "model_access_denied",
                     },
                 )
+                exc._pre_audited = True  # type: ignore[attr-defined]
+                raise exc
         except HTTPException:
             raise
         except Exception:
