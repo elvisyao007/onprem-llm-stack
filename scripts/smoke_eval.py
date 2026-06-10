@@ -12,7 +12,15 @@ Design principles (from eval-driven-llm methodology):
   • Determinism:   judge runs at temperature=0; same golden set → same verdict
                    on the same deployment.
   • Air-gapped:    zero internet calls; all traffic goes to the local LiteLLM
-                   gateway, which routes to on-host Ollama (or vLLM in prod).
+                   gateway → on-host Ollama (or vLLM in prod).
+
+Two-pass execution (important for single-GPU deployments):
+  Pass 1 — Generate all answers with the generator model.
+  Pass 2 — Judge all answers with the judge model.
+  Between passes the script forces the generator model out of VRAM by calling
+  Ollama's keep_alive=0 API, then waits until the GPU is free before loading
+  the judge. This allows running both a 20 GB generator and a 19 GB judge on a
+  32 GB card without VRAM contention.
 
 Usage:
     python3 scripts/smoke_eval.py [OPTIONS]
@@ -25,6 +33,8 @@ Options:
     --threshold FLOAT    Pass-rate threshold   (default: $EVAL_PASS_THRESHOLD or 0.7)
     --golden-set PATH    Golden set JSON       (default: eval/golden_set.json)
     --timeout INT        Seconds per API call  (default: $EVAL_TIMEOUT or 120)
+    --ollama-url URL     Ollama direct API URL (default: $OLLAMA_URL or http://localhost:11434)
+                         Used only for keep_alive=0 VRAM eviction between passes.
 
 Exit codes:
     0 — verdict PASS
@@ -54,11 +64,12 @@ DEFAULT_GENERATOR  = "qwen3-32b"
 DEFAULT_JUDGE      = "gemma4-31b"
 DEFAULT_THRESHOLD  = 0.70
 DEFAULT_TIMEOUT    = 120
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 GEN_MAX_TOKENS   = 1024   # enough for Qwen3 thinking phase + substantive answer
-JUDGE_MAX_TOKENS = 300    # judge outputs only a short JSON object
+JUDGE_MAX_TOKENS = 1024   # Gemma4 also has a thinking phase; 1024 covers thinking+JSON
 
-# ── API helper ─────────────────────────────────────────────────────────────
+# ── LiteLLM API helper ─────────────────────────────────────────────────────
 
 def _chat(
     base_url: str,
@@ -68,6 +79,7 @@ def _chat(
     temperature: float = 0.0,
     max_tokens: int = 1024,
     timeout: int = DEFAULT_TIMEOUT,
+    think: bool = False,
 ) -> dict:
     url = base_url.rstrip("/") + "/chat/completions"
     payload = {
@@ -75,6 +87,9 @@ def _chat(
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "think": think,   # Ollama-specific: False disables CoT thinking phase.
+                          # LiteLLM forwards it via openai/ provider (drop_params:false).
+                          # Ignored by non-Ollama backends.
     }
     req = urllib.request.Request(
         url,
@@ -94,6 +109,47 @@ def _content(resp: dict) -> str:
         return resp["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError):
         return ""
+
+
+# ── VRAM management (Ollama direct API) ────────────────────────────────────
+
+def _ollama_running_models(ollama_url: str) -> list:
+    """Return list of model name strings currently loaded in Ollama."""
+    try:
+        with urllib.request.urlopen(ollama_url + "/api/ps", timeout=5) as resp:
+            data = json.loads(resp.read())
+        return [m.get("name", "") for m in data.get("models", [])]
+    except Exception:
+        return []
+
+
+def _force_unload_and_wait(ollama_url: str, timeout_s: int = 120) -> None:
+    """
+    Evict all currently-loaded Ollama models and wait until VRAM is clear.
+
+    Sends keep_alive=0 to each loaded model via Ollama's native /api/generate
+    endpoint (which respects keep_alive), then polls /api/ps until the loaded-
+    model list is empty or timeout expires.
+    """
+    running = _ollama_running_models(ollama_url)
+    for model_name in running:
+        try:
+            req = urllib.request.Request(
+                ollama_url + "/api/generate",
+                data=json.dumps({"model": model_name, "keep_alive": 0}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=15)
+        except Exception:
+            pass  # best-effort; polling below confirms success
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if not _ollama_running_models(ollama_url):
+            return
+        time.sleep(3)
+    # Timeout — proceed anyway; judge load will fail gracefully if VRAM is full
 
 
 # ── Judge helpers ──────────────────────────────────────────────────────────
@@ -120,7 +176,6 @@ def _judge_prompt(question: str, expected_points: list, answer: str) -> str:
 
 def _parse_judge(text: str) -> tuple:
     """Return (score: int, reason: str). Robust against markdown fences."""
-    # Strip ```json ... ``` wrapping if present
     text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
 
     try:
@@ -129,7 +184,6 @@ def _parse_judge(text: str) -> tuple:
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # Extract first {...} block containing "score"
     m = re.search(r'\{[^{}]*"score"\s*:\s*([01])[^{}]*\}', text, re.DOTALL)
     if m:
         try:
@@ -138,13 +192,12 @@ def _parse_judge(text: str) -> tuple:
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # Final fallback
     if re.search(r'"score"\s*:\s*1', text):
         return 1, "score=1 extracted from malformed response"
     return 0, f"judge parse failed — raw: {text[:100]}"
 
 
-# ── Core eval loop ─────────────────────────────────────────────────────────
+# ── Core eval loop (two-pass) ──────────────────────────────────────────────
 
 def run_eval(
     base_url: str,
@@ -154,47 +207,72 @@ def run_eval(
     golden_set_path: Path,
     threshold: float,
     timeout: int,
+    ollama_url: str,
 ) -> dict:
     with open(golden_set_path, encoding="utf-8") as fh:
         golden = json.load(fh)
     questions = golden["questions"]
+    n = len(questions)
 
     W = 72
     print()
     print("=" * W)
-    print(f"  onprem-llm-stack — Smoke Eval")
+    print("  onprem-llm-stack — Smoke Eval")
     print(f"  Generator : {generator}")
     print(f"  Judge     : {judge}   <- judge != generator, non-self-evaluation")
-    print(f"  Questions : {len(questions)}    Threshold : {threshold * 100:.0f}% pass rate required")
+    print(f"  Questions : {n}    Threshold : {threshold * 100:.0f}% pass rate required")
     print("=" * W)
-    print()
+
+    # ── Pass 1: Generate all answers ───────────────────────────────────────
+    print(f"\nPass 1/2  Generating with {generator} ({n} questions)")
+    print("  ", end="", flush=True)
+
+    gen_results = []
+    for i, q in enumerate(questions, 1):
+        t0 = time.monotonic()
+        gen_answer = ""
+        gen_error  = None
+        try:
+            resp       = _chat(base_url, api_key, generator,
+                               [{"role": "user", "content": q["question"]}],
+                               temperature=0.1, max_tokens=GEN_MAX_TOKENS,
+                               timeout=timeout, think=False)
+            gen_answer = _content(resp)
+        except Exception as exc:
+            gen_error = str(exc)
+        gen_ms = int((time.monotonic() - t0) * 1000)
+        gen_results.append({"answer": gen_answer, "gen_ms": gen_ms, "error": gen_error})
+        print(f"{'.' if not gen_error else 'E'}", end="", flush=True)
+
+    print(f"  done ({sum(r['gen_ms'] for r in gen_results) / 1000:.0f}s total)")
+
+    # ── VRAM handoff ───────────────────────────────────────────────────────
+    print(f"\nVRAM     Evicting {generator} to free GPU memory for judge model...")
+    print(f"         (Ollama keep_alive=0 via {ollama_url})")
+    _force_unload_and_wait(ollama_url)
+    running = _ollama_running_models(ollama_url)
+    if running:
+        print(f"         Warning: {running} still loaded; judge may fail if VRAM is insufficient")
+    else:
+        print("         GPU clear — proceeding to judge pass")
+
+    # ── Pass 2: Judge all answers ──────────────────────────────────────────
+    print(f"\nPass 2/2  Judging with {judge}  (independent — non-self-evaluation)\n")
     hdr = f"  {'ID':<4}  {'Lang':<4}  {'Category':<15}  {'Result':<6}  {'Gen ms':>7}  Reason"
     sep = "  " + "-" * (len(hdr) - 2)
     print(hdr)
     print(sep)
 
     results = []
-
-    for q in questions:
+    for q, gr in zip(questions, gen_results):
         qid      = q["id"]
         lang     = q.get("lang", "?")
         cat      = q.get("category", "?")
         question = q["question"]
         expected = q["expected_points"]
-
-        # ── Generate ────────────────────────────────────────
-        t0 = time.monotonic()
-        gen_answer = ""
-        gen_error  = None
-        try:
-            gen_resp   = _chat(base_url, api_key, generator,
-                               [{"role": "user", "content": question}],
-                               temperature=0.1, max_tokens=GEN_MAX_TOKENS,
-                               timeout=timeout)
-            gen_answer = _content(gen_resp)
-        except Exception as exc:
-            gen_error = str(exc)
-        gen_ms = int((time.monotonic() - t0) * 1000)
+        gen_answer = gr["answer"]
+        gen_ms     = gr["gen_ms"]
+        gen_error  = gr["error"]
 
         if gen_error and not gen_answer:
             row = {"id": qid, "lang": lang, "category": cat,
@@ -206,17 +284,16 @@ def run_eval(
             print(f"  {qid:<4}  {lang:<4}  {cat:<15}  {'ERROR':<6}  {gen_ms:>7}  generation error")
             continue
 
-        # ── Judge ────────────────────────────────────────────
         t1 = time.monotonic()
         judge_score  = 0
         judge_reason = "judge call failed"
         try:
-            judge_resp   = _chat(base_url, api_key, judge,
+            jresp        = _chat(base_url, api_key, judge,
                                  [{"role": "system", "content": _JUDGE_SYSTEM},
                                   {"role": "user",   "content": _judge_prompt(question, expected, gen_answer)}],
                                  temperature=0.0, max_tokens=JUDGE_MAX_TOKENS,
-                                 timeout=timeout)
-            judge_raw    = _content(judge_resp)
+                                 timeout=timeout, think=False)
+            judge_raw    = _content(jresp)
             judge_score, judge_reason = _parse_judge(judge_raw)
         except Exception as exc:
             judge_reason = f"judge error: {exc}"
@@ -235,7 +312,7 @@ def run_eval(
             "judge_latency_ms": judge_ms, "status": status,
         })
 
-    # ── Summary ─────────────────────────────────────────────
+    # ── Summary ────────────────────────────────────────────────────────────
     n_total  = len(results)
     n_pass   = sum(1 for r in results if r["status"] == "pass")
     n_err    = sum(1 for r in results if r["status"] == "error")
@@ -252,36 +329,33 @@ def run_eval(
     rep_dir.mkdir(parents=True, exist_ok=True)
 
     summary = {
-        "timestamp":           ts_utc.isoformat(),
-        "generator_model":     generator,
-        "judge_model":         judge,
-        "judge_independent":   generator != judge,
-        "base_url":            base_url,
-        "golden_set":          str(golden_set_path),
-        "total_questions":     n_total,
-        "passed":              n_pass,
-        "failed":              n_total - n_pass - n_err,
-        "errors":              n_err,
-        "pass_rate":           round(rate, 4),
-        "pass_threshold":      threshold,
-        "verdict":             verdict,
-        "avg_gen_latency_ms":  round(avg_gen, 1),
-        "report_dir":          str(rep_dir),
+        "timestamp":          ts_utc.isoformat(),
+        "generator_model":    generator,
+        "judge_model":        judge,
+        "judge_independent":  generator != judge,
+        "base_url":           base_url,
+        "golden_set":         str(golden_set_path),
+        "total_questions":    n_total,
+        "passed":             n_pass,
+        "failed":             n_total - n_pass - n_err,
+        "errors":             n_err,
+        "pass_rate":          round(rate, 4),
+        "pass_threshold":     threshold,
+        "verdict":            verdict,
+        "avg_gen_latency_ms": round(avg_gen, 1),
+        "report_dir":         str(rep_dir),
     }
     (rep_dir / "results.json").write_text(
-        json.dumps(results,  ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+        json.dumps(results,  ensure_ascii=False, indent=2), encoding="utf-8")
     (rep_dir / "summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print()
     print(sep)
     print(f"  Passed    : {n_pass} / {n_total}  ({rate * 100:.1f}%)")
     if n_err:
         print(f"  Errors    : {n_err}  (counted as failures)")
-    v_sym = "PASS" if verdict == "PASS" else "FAIL"
-    print(f"  Verdict   : {v_sym}  (threshold >= {threshold * 100:.0f}%)")
+    print(f"  Verdict   : {'PASS' if verdict == 'PASS' else 'FAIL'}  (threshold >= {threshold * 100:.0f}%)")
     print(f"  Avg gen   : {avg_gen:.0f} ms/question")
     print(f"  Judge     : {judge}  (independent, non-self-evaluation)")
     print(f"  Report    : {rep_dir}/")
@@ -305,6 +379,8 @@ def main() -> int:
     ap.add_argument("--golden-set", default=str(GOLDEN_SET))
     ap.add_argument("--timeout",    type=int,
                                     default=int(os.environ.get("EVAL_TIMEOUT",     DEFAULT_TIMEOUT)))
+    ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL",           DEFAULT_OLLAMA_URL),
+                    help="Ollama direct API URL for VRAM eviction between passes")
     args = ap.parse_args()
 
     if not args.key:
@@ -326,6 +402,7 @@ def main() -> int:
             golden_set_path=Path(args.golden_set),
             threshold=args.threshold,
             timeout=args.timeout,
+            ollama_url=args.ollama_url,
         )
         return 0 if summary["verdict"] == "PASS" else 1
 
