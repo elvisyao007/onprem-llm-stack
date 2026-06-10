@@ -141,10 +141,35 @@ async def user_api_key_auth(request: Request, api_key: str) -> "UserAPIKeyAuth":
 
     allowed_models: list[str] = key_info.get("allowed_models") or []
 
+    # LiteLLM's can_key_call_model exists but is NOT called from common_checks for
+    # custom_auth responses (no team_object / user_object path covers it).
+    # Enforce model access here instead, where we still have the raw request.
+    if allowed_models:
+        import json
+        try:
+            body_bytes = await request.body()
+            body_json = json.loads(body_bytes) if body_bytes else {}
+            requested_model = body_json.get("model", "")
+            if requested_model and requested_model not in allowed_models:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "error": (
+                            f"Model '{requested_model}' not allowed for this key. "
+                            f"Allowed: {allowed_models}"
+                        ),
+                        "code": "model_access_denied",
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # malformed body — let LiteLLM's own validation reject it
+
     return UserAPIKeyAuth(
         api_key=api_key,
         user_id=key_info.get("user_id", "unknown"),
-        models=allowed_models,          # LiteLLM enforces this at the routing layer
+        models=allowed_models,
         max_budget=float(max_budget) if max_budget is not None else None,
         metadata={
             "key_label": label,
