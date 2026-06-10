@@ -202,11 +202,18 @@ class SQLiteAuditLogger(CustomLogger):
         end_time: datetime,
     ) -> None:
         try:
+            # 403/429 denials raised inside custom_auth are pre-audited by
+            # key_auth._pre_audit_denial() with full user attribution.
+            # Skip here to avoid an 'unknown' duplicate record.
+            exc = kwargs.get("exception")
+            if getattr(exc, "_pre_audited", False):
+                return
+
             user_id, key_label = self._extract_user_info(kwargs)
             model              = kwargs.get("model", "unknown")
             latency_ms = (end_time - start_time).total_seconds() * 1000
             ts = start_time.astimezone(timezone.utc).isoformat()
-            error_type = type(kwargs.get("exception", Exception())).__name__
+            error_type = type(exc).__name__ if exc is not None else "Unknown"
 
             self._write(ts, user_id, key_label, model, 0, 0,
                         latency_ms, "failure", error_type,
