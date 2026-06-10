@@ -14,15 +14,28 @@
 model_list:
 
   # ── dev routes — Ollama on host ──────────────────────────────
+  # On Linux, Ollama binds to 127.0.0.1 by default, which is unreachable from
+  # containers. Two options:
+  #   (A) Preferred: set OLLAMA_HOST=0.0.0.0 via systemd override and use port 11434.
+  #   (B) Temporary: run scripts/ollama-proxy.py in background (port 11435 → 11434).
+  # See README.md "One-time host setup" for instructions on option A.
+  # Use openai/ provider pointing at Ollama's OpenAI-compatible endpoint (/v1).
+  # This avoids LiteLLM's native Ollama provider stripping content from models
+  # that return a "thinking" field (e.g. Qwen3). The model name must match the
+  # Ollama tag exactly (verified with: ollama list).
   - model_name: qwen3-32b
     litellm_params:
-      model: ollama/qwen3:32b
-      api_base: http://host.docker.internal:11434
+      model: openai/qwen3:32b
+      # Port 11435 = ollama-proxy.py forwarding to Ollama on 127.0.0.1:11434.
+      # Change back to 11434 after applying the OLLAMA_HOST=0.0.0.0 systemd override.
+      api_base: http://host.docker.internal:11435/v1
+      api_key: "none"
 
   - model_name: gemma4-31b
     litellm_params:
-      model: ollama/gemma4:31b
-      api_base: http://host.docker.internal:11434
+      model: openai/gemma4:31b
+      api_base: http://host.docker.internal:11435/v1
+      api_key: "none"
 
   # ── prod routes — vLLM container (uncomment for prod profile) ─
   # - model_name: vllm-default

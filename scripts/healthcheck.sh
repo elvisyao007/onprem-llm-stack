@@ -87,8 +87,13 @@ fi
 printf "%s\n\n" "$ftr"
 
 # ── Ollama on host (informational) ────────────────────────────
+# Try direct port 11434 first; fall back to ollama-proxy.py on 11435 (Linux workaround)
 ollama_st=$(http_status "http://localhost:11434/api/tags")
-printf "Host Ollama (:11434):  "
+if [[ "$ollama_st" == "unreachable" ]]; then
+  proxy_st=$(http_status "http://localhost:11435/api/tags")
+  [[ "$proxy_st" == "healthy" ]] && ollama_st="healthy(proxy)"
+fi
+printf "Host Ollama:           "
 colour_status "$ollama_st"
 printf "\n\n"
 

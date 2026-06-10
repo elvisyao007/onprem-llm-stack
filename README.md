@@ -49,6 +49,17 @@ graph TD
 **Prerequisites:** Docker, Docker Compose v2+, Ollama running on the host with
 `qwen3:32b` and/or `gemma4:31b` already pulled.
 
+**One-time host setup (Linux only):** Ollama must listen on `0.0.0.0` so the LiteLLM
+container can reach it. By default Ollama binds to `127.0.0.1` only.
+
+```bash
+# Run once; requires sudo. Creates a systemd override — does not change the base unit.
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n' \
+  | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+```
+
 ```bash
 # 1. Configure environment (at minimum change LITELLM_MASTER_KEY)
 cp .env.example .env && $EDITOR .env
