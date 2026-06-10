@@ -1,0 +1,52 @@
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+venv/
+.venv/
+pip-log.txt
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Docker local state
+.docker/
+
+# Model weights — never commit (sizes: 7B≈14GB, 32B≈64GB)
+*.bin
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.ggml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
