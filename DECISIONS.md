@@ -155,7 +155,7 @@ enumerable set of images. Mutable tags (`latest`, `main`, branch names) break th
 All images in `docker-compose.yml` are pinned to an explicit, immutable version tag:
 
 ```yaml
-litellm:   ghcr.io/berriai/litellm:main-v1.88.1
+litellm:   ghcr.io/berriai/litellm:v1.88.1
 open-webui: ghcr.io/open-webui/open-webui:v0.9.6
 vllm:       vllm/vllm-openai:v0.22.1
 ```
