@@ -1,0 +1,33 @@
+{
+  "invoice_number": "INV-2024-003",
+  "issue_date": "2024-10-10",
+  "due_date": "2024-11-09",
+  "issuer_name": "株式会社テックソリューションズ",
+  "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+  "issuer_registration_number": "T1234567890123",
+  "recipient_name": "有限会社デザインワークス",
+  "recipient_address": "愛知県名古屋市中区栄四丁目4番4号",
+  "line_items": [
+    {
+      "description": "デザイン制作費",
+      "quantity": 1,
+      "unit_price": 80000,
+      "amount": 80000
+    },
+    {
+      "description": "印刷費",
+      "quantity": 500,
+      "unit_price": 300,
+      "amount": 150000
+    }
+  ],
+  "subtotal": 230000,
+  "consumption_tax": 23000,
+  "total": 253000,
+  "_meta": {
+    "is_valid": true,
+    "validation_issues": [],
+    "correct_consumption_tax": 23000,
+    "correct_total": 253000
+  }
+}

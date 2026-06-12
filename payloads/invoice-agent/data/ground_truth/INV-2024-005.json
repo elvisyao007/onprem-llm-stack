@@ -1,0 +1,35 @@
+{
+  "invoice_number": "INV-2024-005",
+  "issue_date": "2024-10-20",
+  "due_date": "2024-11-19",
+  "issuer_name": "株式会社テックソリューションズ",
+  "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+  "issuer_registration_number": "T1234567890123",
+  "recipient_name": "合同会社AIラボ",
+  "recipient_address": "東京都港区六本木六丁目6番6号",
+  "line_items": [
+    {
+      "description": "AIシステム導入支援",
+      "quantity": 1,
+      "unit_price": 500000,
+      "amount": 500000
+    },
+    {
+      "description": "トレーニングサービス",
+      "quantity": 2,
+      "unit_price": 50000,
+      "amount": 100000
+    }
+  ],
+  "subtotal": 600000,
+  "consumption_tax": 60000,
+  "total": 650000,
+  "_meta": {
+    "is_valid": false,
+    "validation_issues": [
+      "合計金額が不正: 記載値650000円、正しい値660000円 (小計600000円 + 消費税60000円)"
+    ],
+    "correct_consumption_tax": 60000,
+    "correct_total": 660000
+  }
+}

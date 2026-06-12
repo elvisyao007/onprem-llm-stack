@@ -1,0 +1,39 @@
+{
+  "invoice_number": "INV-2024-002",
+  "issue_date": "2024-10-05",
+  "due_date": "2024-11-04",
+  "issuer_name": "株式会社テックソリューションズ",
+  "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+  "issuer_registration_number": "T1234567890123",
+  "recipient_name": "株式会社フロンティア",
+  "recipient_address": "大阪府大阪市北区梅田三丁目3番3号",
+  "line_items": [
+    {
+      "description": "ソフトウェア開発費",
+      "quantity": 3,
+      "unit_price": 200000,
+      "amount": 600000
+    },
+    {
+      "description": "サーバー構築費",
+      "quantity": 1,
+      "unit_price": 120000,
+      "amount": 120000
+    },
+    {
+      "description": "保守サポート",
+      "quantity": 1,
+      "unit_price": 30000,
+      "amount": 30000
+    }
+  ],
+  "subtotal": 750000,
+  "consumption_tax": 75000,
+  "total": 825000,
+  "_meta": {
+    "is_valid": true,
+    "validation_issues": [],
+    "correct_consumption_tax": 75000,
+    "correct_total": 825000
+  }
+}
