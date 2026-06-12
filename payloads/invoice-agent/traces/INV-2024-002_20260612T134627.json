@@ -1,0 +1,127 @@
+{
+  "trace_id": "bd520505-d7f9-4d60-9fd7-792b10a8a274",
+  "invoice_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-002.pdf",
+  "invoice_id": "INV-2024-002",
+  "model": "qwen3-32b",
+  "started_at": "2026-06-12T13:45:55.497527+00:00",
+  "steps": [
+    {
+      "step_n": 1,
+      "tool_called": "extract_fields",
+      "tool_args": {
+        "pdf_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-002.pdf"
+      },
+      "tool_result": {
+        "text": "請 求 書\n請求書番号 INV-2024-002 【請求元】 【請求先】\n発行日 2024-10-05 株式会社テックソリューションズ 株式会社フロンティア\n支払期限 2024-11-04 東京都渋谷区恵比寿一丁目1番1号 大阪府大阪市北区梅田三丁目3番3号\n登録番号: T1234567890123\n品名 数量 単価 金額\nソフトウェア開発費 3 ¥200,000 ¥600,000\nサーバー構築費 1 ¥120,000 ¥120,000\n保守サポート 1 ¥30,000 ¥30,000\n小計 ¥750,000\n消費税 (10%) ¥75,000\n合計金額 ¥825,000",
+        "pages": 1,
+        "char_count": 289
+      },
+      "latency_ms": 10,
+      "llm_latency_ms": 6797,
+      "timestamp": "2026-06-12T13:46:02.305248+00:00"
+    },
+    {
+      "step_n": 2,
+      "tool_called": "validate",
+      "tool_args": {
+        "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+        "recipient_name": "株式会社フロンティア",
+        "subtotal": 750000,
+        "consumption_tax": 75000,
+        "issuer_registration_number": "T1234567890123",
+        "recipient_address": "大阪府大阪市北区梅田三丁目3番3号",
+        "line_items": [
+          {
+            "amount": 600000,
+            "description": "ソフトウェア開発費",
+            "quantity": 3,
+            "unit_price": 200000
+          },
+          {
+            "amount": 120000,
+            "description": "サーバー構築費",
+            "quantity": 1,
+            "unit_price": 120000
+          },
+          {
+            "amount": 30000,
+            "description": "保守サポート",
+            "quantity": 1,
+            "unit_price": 30000
+          }
+        ],
+        "total": 825000,
+        "invoice_number": "INV-2024-002",
+        "issue_date": "2024-10-05",
+        "due_date": "2024-11-04",
+        "issuer_name": "株式会社テックソリューションズ"
+      },
+      "tool_result": {
+        "passed": true,
+        "issues": [],
+        "details": {
+          "subtotal": 750000,
+          "consumption_tax_stated": 75000,
+          "consumption_tax_expected": 75000,
+          "total_stated": 825000,
+          "total_expected": 825000
+        }
+      },
+      "latency_ms": 0,
+      "llm_latency_ms": 11948,
+      "timestamp": "2026-06-12T13:46:14.253615+00:00"
+    },
+    {
+      "step_n": 3,
+      "tool_called": "write_back",
+      "tool_args": {
+        "recipient_name": "株式会社フロンティア",
+        "subtotal": 750000,
+        "due_date": "2024-11-04",
+        "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+        "issuer_registration_number": "T1234567890123",
+        "total": 825000,
+        "consumption_tax": 75000,
+        "invoice_number": "INV-2024-002",
+        "issue_date": "2024-10-05",
+        "issuer_name": "株式会社テックソリューションズ",
+        "line_items": [
+          {
+            "amount": 600000,
+            "description": "ソフトウェア開発費",
+            "quantity": 3,
+            "unit_price": 200000
+          },
+          {
+            "amount": 120000,
+            "description": "サーバー構築費",
+            "quantity": 1,
+            "unit_price": 120000
+          },
+          {
+            "amount": 30000,
+            "description": "保守サポート",
+            "quantity": 1,
+            "unit_price": 30000
+          }
+        ],
+        "recipient_address": "大阪府大阪市北区梅田三丁目3番3号"
+      },
+      "tool_result": {
+        "written": true,
+        "output_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/outputs/INV-2024-002.json"
+      },
+      "latency_ms": 0,
+      "llm_latency_ms": 8462,
+      "timestamp": "2026-06-12T13:46:22.716419+00:00"
+    }
+  ],
+  "final_result": {
+    "status": "success",
+    "agent_message": "請求書の処理が正常に完了しました。  \n検証結果: 消費税（75,000円）と合計金額（825,000円）が正しい計算結果と一致しています。  \n出力先: `/mnt/data/onprem-llm-stack/payloads/invoice-agent/outputs/INV-2024-002.json`"
+  },
+  "total_steps": 3,
+  "llm_calls": 4,
+  "total_latency_ms": 32388,
+  "completed_at": "2026-06-12T13:46:27.886520+00:00"
+}

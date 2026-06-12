@@ -1,0 +1,79 @@
+{
+  "trace_id": "27cadc27-051b-4dea-aaea-2769d331f255",
+  "invoice_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-005.pdf",
+  "invoice_id": "INV-2024-005",
+  "model": "qwen3-32b",
+  "started_at": "2026-06-12T13:47:30.791205+00:00",
+  "steps": [
+    {
+      "step_n": 1,
+      "tool_called": "extract_fields",
+      "tool_args": {
+        "pdf_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-005.pdf"
+      },
+      "tool_result": {
+        "text": "請 求 書\n請求書番号 INV-2024-005 【請求元】 【請求先】\n発行日 2024-10-20 株式会社テックソリューションズ 合同会社AIラボ\n支払期限 2024-11-19 東京都渋谷区恵比寿一丁目1番1号 東京都港区六本木六丁目6番6号\n登録番号: T1234567890123\n品名 数量 単価 金額\nAIシステム導入支援 1 ¥500,000 ¥500,000\nトレーニングサービス 2 ¥50,000 ¥100,000\n小計 ¥600,000\n消費税 (10%) ¥60,000\n合計金額 ¥650,000",
+        "pages": 1,
+        "char_count": 263
+      },
+      "latency_ms": 9,
+      "llm_latency_ms": 6277,
+      "timestamp": "2026-06-12T13:47:37.077689+00:00"
+    },
+    {
+      "step_n": 2,
+      "tool_called": "validate",
+      "tool_args": {
+        "invoice_number": "INV-2024-005",
+        "issue_date": "2024-10-20",
+        "due_date": "2024-11-19",
+        "issuer_registration_number": "T1234567890123",
+        "recipient_name": "合同会社AIラボ",
+        "line_items": [
+          {
+            "amount": 500000,
+            "description": "AIシステム導入支援",
+            "quantity": 1,
+            "unit_price": 500000
+          },
+          {
+            "amount": 100000,
+            "description": "トレーニングサービス",
+            "quantity": 2,
+            "unit_price": 50000
+          }
+        ],
+        "consumption_tax": 60000,
+        "total": 650000,
+        "issuer_name": "株式会社テックソリューションズ",
+        "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+        "recipient_address": "東京都港区六本木六丁目6番6号",
+        "subtotal": 600000
+      },
+      "tool_result": {
+        "passed": false,
+        "issues": [
+          "合計金額が不正: 記載値=650000円、正しい値=660000円 (小計600000円 + 消費税60000円)"
+        ],
+        "details": {
+          "subtotal": 600000,
+          "consumption_tax_stated": 60000,
+          "consumption_tax_expected": 60000,
+          "total_stated": 650000,
+          "total_expected": 660000
+        }
+      },
+      "latency_ms": 0,
+      "llm_latency_ms": 11671,
+      "timestamp": "2026-06-12T13:47:48.749411+00:00"
+    }
+  ],
+  "final_result": {
+    "status": "flagged",
+    "agent_message": "検証結果: 請求書の合計金額に不整合が見つかりました。\n\n問題点:\n- 記載の合計金額: 650,000円\n- 正しい合計金額: 660,000円 (小計600,000円 + 消費税60,000円)\n\n明細の再計算結果:\n1. AIシステム導入支援: 1件 × 500,000円 = 500,000円\n2. トレーニングサービス: 2件 × 50,000円 = 100,000円\n   → 小計: 600,000円\n3. 消費税(10%): 600,000 × 10% = 60,000円\n   → 合計: 660,000円\n\n現在のままでは金額の整合性が取れていないため、write_backは実施しませんでした。請求書の合計金額を660,000円に修正した上で再度検証をお願いします。"
+  },
+  "total_steps": 2,
+  "llm_calls": 3,
+  "total_latency_ms": 29089,
+  "completed_at": "2026-06-12T13:47:59.880326+00:00"
+}

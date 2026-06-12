@@ -1,0 +1,115 @@
+{
+  "trace_id": "ebdb65bd-5d0b-44e6-9538-29fe58ec7416",
+  "invoice_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-003.pdf",
+  "invoice_id": "INV-2024-003",
+  "model": "qwen3-32b",
+  "started_at": "2026-06-12T13:46:27.899224+00:00",
+  "steps": [
+    {
+      "step_n": 1,
+      "tool_called": "extract_fields",
+      "tool_args": {
+        "pdf_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-003.pdf"
+      },
+      "tool_result": {
+        "text": "請 求 書\n請求書番号 INV-2024-003 【請求元】 【請求先】\n発行日 2024-10-10 株式会社テックソリューションズ 有限会社デザインワークス\n支払期限 2024-11-09 東京都渋谷区恵比寿一丁目1番1号 愛知県名古屋市中区栄四丁目4番4号\n登録番号: T1234567890123\n品名 数量 単価 金額\nデザイン制作費 1 ¥80,000 ¥80,000\n印刷費 500 ¥300 ¥150,000\n小計 ¥230,000\n消費税 (10%) ¥23,000\n合計金額 ¥253,000",
+        "pages": 1,
+        "char_count": 256
+      },
+      "latency_ms": 9,
+      "llm_latency_ms": 6246,
+      "timestamp": "2026-06-12T13:46:34.154783+00:00"
+    },
+    {
+      "step_n": 2,
+      "tool_called": "validate",
+      "tool_args": {
+        "invoice_number": "INV-2024-003",
+        "due_date": "2024-11-09",
+        "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+        "issuer_registration_number": "T1234567890123",
+        "recipient_name": "有限会社デザインワークス",
+        "subtotal": 230000,
+        "issue_date": "2024-10-10",
+        "issuer_name": "株式会社テックソリューションズ",
+        "recipient_address": "愛知県名古屋市中区栄四丁目4番4号",
+        "line_items": [
+          {
+            "amount": 80000,
+            "description": "デザイン制作費",
+            "quantity": 1,
+            "unit_price": 80000
+          },
+          {
+            "amount": 150000,
+            "description": "印刷費",
+            "quantity": 500,
+            "unit_price": 300
+          }
+        ],
+        "consumption_tax": 23000,
+        "total": 253000
+      },
+      "tool_result": {
+        "passed": true,
+        "issues": [],
+        "details": {
+          "subtotal": 230000,
+          "consumption_tax_stated": 23000,
+          "consumption_tax_expected": 23000,
+          "total_stated": 253000,
+          "total_expected": 253000
+        }
+      },
+      "latency_ms": 0,
+      "llm_latency_ms": 11165,
+      "timestamp": "2026-06-12T13:46:45.320671+00:00"
+    },
+    {
+      "step_n": 3,
+      "tool_called": "write_back",
+      "tool_args": {
+        "recipient_address": "愛知県名古屋市中区栄四丁目4番4号",
+        "recipient_name": "有限会社デザインワークス",
+        "subtotal": 230000,
+        "total": 253000,
+        "due_date": "2024-11-09",
+        "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+        "issuer_name": "株式会社テックソリューションズ",
+        "issuer_registration_number": "T1234567890123",
+        "line_items": [
+          {
+            "amount": 80000,
+            "description": "デザイン制作費",
+            "quantity": 1,
+            "unit_price": 80000
+          },
+          {
+            "amount": 150000,
+            "description": "印刷費",
+            "quantity": 500,
+            "unit_price": 300
+          }
+        ],
+        "consumption_tax": 23000,
+        "invoice_number": "INV-2024-003",
+        "issue_date": "2024-10-10"
+      },
+      "tool_result": {
+        "written": true,
+        "output_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/outputs/INV-2024-003.json"
+      },
+      "latency_ms": 0,
+      "llm_latency_ms": 9054,
+      "timestamp": "2026-06-12T13:46:54.375196+00:00"
+    }
+  ],
+  "final_result": {
+    "status": "success",
+    "agent_message": "請求書の処理が正常に完了しました。検証結果は以下の通りです：\n\n- 小計：¥230,000（計算値：¥230,000）\n- 消費税（10%）：¥23,000（計算値：¥23,000）\n- 合計金額：¥253,000（計算値：¥253,000）\n\n処理結果は以下のパスにJSON形式で保存されました：  \n`/mnt/data/onprem-llm-stack/payloads/invoice-agent/outputs/INV-2024-003.json`"
+  },
+  "total_steps": 3,
+  "llm_calls": 4,
+  "total_latency_ms": 32681,
+  "completed_at": "2026-06-12T13:47:00.580441+00:00"
+}

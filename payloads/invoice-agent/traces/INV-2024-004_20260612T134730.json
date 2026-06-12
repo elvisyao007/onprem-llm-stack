@@ -1,0 +1,79 @@
+{
+  "trace_id": "a765fb96-6856-4aed-918e-42968446d7c3",
+  "invoice_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-004.pdf",
+  "invoice_id": "INV-2024-004",
+  "model": "qwen3-32b",
+  "started_at": "2026-06-12T13:47:00.590663+00:00",
+  "steps": [
+    {
+      "step_n": 1,
+      "tool_called": "extract_fields",
+      "tool_args": {
+        "pdf_path": "/mnt/data/onprem-llm-stack/payloads/invoice-agent/data/INV-2024-004.pdf"
+      },
+      "tool_result": {
+        "text": "請 求 書\n請求書番号 INV-2024-004 【請求元】 【請求先】\n発行日 2024-10-15 株式会社テックソリューションズ 株式会社データアナリティクス\n支払期限 2024-11-14 東京都渋谷区恵比寿一丁目1番1号 福岡県福岡市博多区博多駅前五丁目5番5号\n登録番号: T1234567890123\n品名 数量 単価 金額\nデータ分析サービス 5 ¥40,000 ¥200,000\nレポート作成費 2 ¥25,000 ¥50,000\n小計 ¥250,000\n消費税 (10%) ¥30,000\n合計金額 ¥280,000",
+        "pages": 1,
+        "char_count": 268
+      },
+      "latency_ms": 11,
+      "llm_latency_ms": 6081,
+      "timestamp": "2026-06-12T13:47:06.682946+00:00"
+    },
+    {
+      "step_n": 2,
+      "tool_called": "validate",
+      "tool_args": {
+        "line_items": [
+          {
+            "amount": 200000,
+            "description": "データ分析サービス",
+            "quantity": 5,
+            "unit_price": 40000
+          },
+          {
+            "amount": 50000,
+            "description": "レポート作成費",
+            "quantity": 2,
+            "unit_price": 25000
+          }
+        ],
+        "subtotal": 250000,
+        "issue_date": "2024-10-15",
+        "due_date": "2024-11-14",
+        "issuer_address": "東京都渋谷区恵比寿一丁目1番1号",
+        "recipient_address": "福岡県福岡市博多区博多駅前五丁目5番5号",
+        "consumption_tax": 30000,
+        "total": 280000,
+        "invoice_number": "INV-2024-004",
+        "issuer_name": "株式会社テックソリューションズ",
+        "issuer_registration_number": "T1234567890123",
+        "recipient_name": "株式会社データアナリティクス"
+      },
+      "tool_result": {
+        "passed": false,
+        "issues": [
+          "消費税の金額が不正: 記載値=30000円、正しい値=25000円 (小計250000円の10%)"
+        ],
+        "details": {
+          "subtotal": 250000,
+          "consumption_tax_stated": 30000,
+          "consumption_tax_expected": 25000,
+          "total_stated": 280000,
+          "total_expected": 280000
+        }
+      },
+      "latency_ms": 0,
+      "llm_latency_ms": 12601,
+      "timestamp": "2026-06-12T13:47:19.284062+00:00"
+    }
+  ],
+  "final_result": {
+    "status": "flagged",
+    "agent_message": "消費税の金額に不整合が見つかりました。小計250,000円の10%消費税は25,000円となるべきですが、請求書には30,000円と記載されています。このため検証に合格せず、データの保存は行えません。請求書の税額計算を修正の上、再度処理を実施してください。"
+  },
+  "total_steps": 2,
+  "llm_calls": 3,
+  "total_latency_ms": 30190,
+  "completed_at": "2026-06-12T13:47:30.781175+00:00"
+}
