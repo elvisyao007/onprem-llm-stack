@@ -454,3 +454,135 @@ a fully isolated target machine immediately after deployment.
 - The golden set covers general LLM knowledge, not domain-specific enterprise
   content. Teams with highly specialized use cases should extend `golden_set.json`
   with domain questions before using the score as a deployment gate.
+
+---
+
+## ADR-0008: Invoice agent uses bare function-calling, no agent framework
+
+**Status:** Accepted
+**Date:** 2026-06-12
+**Deciders:** Elvis Yao
+
+### Context
+
+The first payload built on onprem-llm-stack is a Japanese invoice (請求書)
+processing agent: extract fields → validate arithmetic → write structured output.
+The question was whether to use an agent framework (LangGraph, CrewAI, AutoGen)
+or the raw OpenAI function-calling API.
+
+### Decision
+
+Use the raw OpenAI SDK function-calling loop (≈ 70 lines of Python in `agent.py`).
+No agent framework.
+
+### Rationale
+
+**The agent is the evaluation target, not the product.**  
+Phase B (`eval-sanity v0.3`) will assess the agent's trajectory (tool selection,
+argument quality, error detection). An agent framework inserts middleware that
+transforms the trajectory — tool names get rewritten, intermediate steps get
+merged, retries happen silently. A bare loop produces a 1-to-1 mapping between
+LLM decisions and trace entries, making assertions unambiguous:
+`trace["steps"][1]["tool_called"] == "validate"` is always true and always means
+the model called validate, not that a framework routed something through it.
+
+Frameworks also add dependencies that complicate air-gapped deployment. Each
+additional package is a mirror entry that must be pre-pulled and verified.
+
+### Consequences
+
+- Trace entries map exactly to LLM function-call decisions.
+- No framework version to pin, track, or update.
+- The agent cannot recover from multi-step planning failures without code changes
+  (acceptable: Phase A scope is fixed at exactly 3 tools, linear flow).
+
+---
+
+## ADR-0009: Phase A uses synthetic, text-layer-clean 請求書 PDFs
+
+**Status:** Accepted
+**Date:** 2026-06-12
+**Deciders:** Elvis Yao
+
+### Context
+
+WS-3 discovery showed that DeepDoc fails on form-class documents.  pdfplumber
+works on native-text PDFs (font-embedded, text stream present) but degrades on
+scanned images.  The invoice agent needs a document corpus to run against.
+
+### Decision
+
+Generate synthetic PDFs with reportlab + IPA Gothic (a freely licensed Japanese
+TTF). All fields are fictitious. Two of the five invoices contain intentional
+arithmetic errors (wrong 消費税 or wrong 合計) to test validation detection.
+
+### Rationale
+
+**Control variables, isolate trajectory noise.**  
+The evaluation target is agent behavior (tool ordering, field extraction quality,
+validation logic), not OCR robustness. Introducing real scanned invoices would add
+a parsing noise floor that obscures whether a trajectory failure is a model
+reasoning failure or a text extraction failure. Synthetic clean PDFs eliminate the
+confound. OCR robustness and dirty document handling are explicitly deferred to v2.
+
+**No real data.** Using synthetic data avoids PII/privacy concerns entirely.
+The stack's CLAUDE.md requires treating all data as potentially containing PII;
+generating purely synthetic data sidesteps this constraint cleanly.
+
+### Consequences
+
+- `pdfplumber` extracts 100% of fields without OCR (verified on baseline run).
+- Agent trajectories on these PDFs represent a best-case upper bound; real-world
+  accuracy on scanned documents will be lower and must be measured separately in v2.
+- Ground truth JSONs are committed alongside PDFs, enabling deterministic accuracy
+  scoring in Phase B without human annotation.
+
+---
+
+## ADR-0010: qwen3:32b selected as function-calling model for invoice agent
+
+**Status:** Accepted
+**Date:** 2026-06-12
+**Deciders:** Elvis Yao
+
+### Context
+
+Available models on Ollama at time of decision:
+- `qwen3:32b` — 20 GB, thinking model
+- `gemma4:31b` — 19 GB, thinking model
+- `schroneko/llama-3.1-swallow-8b-instruct-v0.1` — 8 GB, Japanese-tuned
+- `dsasai/llama3-elyza-jp-8b` — 5 GB, Japanese-tuned
+- `fuukeidaisuki/nvidia-nemotron-nano-9b-v2-japanese` — 6 GB, Japanese-tuned
+
+The invoice agent requires both Japanese language comprehension and reliable
+structured function calling.
+
+### Decision
+
+Use `qwen3:32b` with `think: false` passed in `extra_body`.
+
+### Rationale
+
+- **Function calling fidelity.** Verified via direct API test: qwen3:32b correctly
+  generates `tool_calls` with valid JSON arguments (`{"invoice_number":"INV-001"}`)
+  when `think: false` suppresses the thinking chain. gemma4:31b was not tested
+  independently; qwen3 was selected first and worked cleanly.
+- **Prior art in this repo.** ADR commit `f5b0cf2` (smoke_eval.py) already
+  established the `think: false` pattern for qwen3 in function-calling contexts.
+  Using the same model avoids a new VRAM baseline and re-uses existing knowledge.
+- **Capacity.** qwen3:32b at 20 GB fits within the 32 GB VRAM budget with
+  headroom for the OS and inference overhead; the 8 B Japanese models trade
+  reasoning quality for VRAM but were not evaluated.
+- **Japanese language quality.** The 8 B Japanese-tuned models are optimized for
+  Japanese fluency but were not evaluated for function calling reliability on
+  structured invoice data. qwen3:32b is known-good on structured output tasks.
+
+### Consequences
+
+- `think: false` is required in `extra_body` for every LiteLLM call from the agent;
+  without it, qwen3 wraps output in a `<think>...</think>` block which may interfere
+  with tool-call parsing.
+- Switching to a smaller model in the future requires re-evaluating function
+  calling fidelity, not just Japanese language quality.
+- Both qwen3 and gemma4 cannot run simultaneously on 32 GB VRAM. The invoice agent
+  must be run with only one model loaded (dev profile, Ollama manages this).
