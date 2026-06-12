@@ -8,6 +8,10 @@ data/audit.db
 # Phase C: smoke-eval reports are generated artifacts, not source
 eval/reports/*
 !eval/reports/.gitkeep
+
+# Invoice agent: write-back outputs are runtime artifacts, not source
+payloads/invoice-agent/outputs/*
+!payloads/invoice-agent/outputs/.gitkeep
 .env.local
 .env.*.local
 *.env
